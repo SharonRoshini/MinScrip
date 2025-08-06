@@ -12,7 +12,7 @@ import google.auth.transport.requests
 app = Flask(__name__)
 CORS(app)
 
-### ---------- XLSX Call Duration Analysis ----------
+# ------------------ Utility ------------------
 
 def parse_duration(duration_str):
     try:
@@ -20,6 +20,8 @@ def parse_duration(duration_str):
         return h * 3600 + m * 60 + s
     except:
         return 0
+
+# ------------------ XLSX Call Duration Analysis ------------------
 
 @app.route('/analyze-xlsx', methods=['POST'])
 def analyze_xlsx():
@@ -30,17 +32,48 @@ def analyze_xlsx():
 
         df = pd.read_excel(file)
 
-        required = ["Name", "Total Duration", "Missed Calls", "Voicemails"]
+        # Rename mismatched headers from Excel
+        rename_map = {
+            "Inbound total no.of Calls": "Inbound Calls",
+            "Outbound total no.of Calls": "Outbound Calls"
+        }
+        df.rename(columns=rename_map, inplace=True)
+
+        required = [
+            "Name", "Total Duration", "Missed Calls", "Voicemails",
+            "Inbound Calls", "Outbound Calls", "Inbound Duration", "Outbound Duration"
+        ]
         for col in required:
             if col not in df.columns:
                 return jsonify({"error": f"Missing column: {col}"}), 400
 
+        # Convert durations
         df["Total Duration (secs)"] = df["Total Duration"].apply(parse_duration)
+        df["Inbound Duration (secs)"] = df["Inbound Duration"].apply(parse_duration)
+        df["Outbound Duration (secs)"] = df["Outbound Duration"].apply(parse_duration)
+
+        # Clean numeric values
         df["Missed Calls"] = pd.to_numeric(df["Missed Calls"], errors='coerce').fillna(0)
         df["Voicemails"] = pd.to_numeric(df["Voicemails"], errors='coerce').fillna(0)
+        df["Inbound Calls"] = pd.to_numeric(df["Inbound Calls"], errors='coerce').fillna(0)
+        df["Outbound Calls"] = pd.to_numeric(df["Outbound Calls"], errors='coerce').fillna(0)
+
+        # Compute metrics
         df["Total Hours"] = (df["Total Duration (secs)"] / 3600).round(2)
         df["Total Missed or Voicemails"] = df["Missed Calls"] + df["Voicemails"]
 
+        # Ratio calculations
+        df["Call Ratio (Inbound/Outbound)"] = df.apply(
+            lambda row: round(row["Inbound Calls"] / row["Outbound Calls"], 2)
+            if row["Outbound Calls"] != 0 else "Inf", axis=1
+        )
+
+        df["Duration Ratio (Inbound/Outbound)"] = df.apply(
+            lambda row: round(row["Inbound Duration (secs)"] / row["Outbound Duration (secs)"], 2)
+            if row["Outbound Duration (secs)"] != 0 else "Inf", axis=1
+        )
+
+        # Filter top users
         high_hours_threshold = df["Total Hours"].quantile(0.75)
         high_missed_vm_threshold = df["Total Missed or Voicemails"].quantile(0.75)
 
@@ -54,14 +87,17 @@ def analyze_xlsx():
             ascending=[False, False]
         )
 
-        users = top_users_sorted[["Name", "Total Hours", "Missed Calls", "Voicemails"]].to_dict(orient='records')
+        users = top_users_sorted[[
+            "Name", "Total Hours", "Missed Calls", "Voicemails",
+            "Call Ratio (Inbound/Outbound)", "Duration Ratio (Inbound/Outbound)"
+        ]].to_dict(orient='records')
 
         return jsonify({"users": users})
 
     except Exception as e:
         return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
 
-### ---------- Google Workspace Inactivity Analysis ----------
+# ------------------ Google Workspace Inactivity Analysis ------------------
 
 @app.route('/upload', methods=['POST'])
 def upload_service_account():
@@ -186,7 +222,7 @@ def upload_service_account():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-### ---------- Run the App ----------
+# ------------------ Run the App ------------------
 
 if __name__ == '__main__':
-    app.run(port=5001)
+    app.run(port=5002)
