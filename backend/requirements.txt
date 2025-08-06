@@ -1,0 +1,7 @@
+Flask
+flask-cors
+requests
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+gunicorn
