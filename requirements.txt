@@ -1,10 +1,10 @@
-flask
+Flask
 flask-cors
-pandas
-gunicorn
 requests
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
+google-api-python-client
+pandas
 openpyxl
-xlrd
+gunicorn
